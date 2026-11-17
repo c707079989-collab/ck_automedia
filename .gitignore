@@ -1,0 +1,26 @@
+# ---- monorepo 级忽略 ----
+# 各子项目自带的 .gitignore 仍然生效，这里只补顶层/跨项目要挡的东西。
+# 注意：不要写 **/cache/、**/database/、**/data/ 这种通配 ——
+# media-crawler 里 cache/ 和 database/ 是源码目录，webui/src/components/data/ 也是源码。
+
+# 归档：旧 .git、打包过的废弃目录
+_archive/
+*.tar.gz
+*.tgz
+
+# 环境变量与凭据
+.env
+!.env.example
+**/local.properties
+**/cookiesFile/
+
+# 运行时抓取数据（hot-search-crawler 只有数据，不发布）
+hot-search-crawler/data/
+
+# 日志与临时文件
+*.log
+*.tmp
+
+# 系统
+.DS_Store
+Thumbs.db

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>创作工作台 · 排版方案预览 A/B</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5; color: #303133; font-size: 14px;
+  }
+  .notice {
+    background: #fdf6ec; color: #b88230; border-bottom: 1px solid #f5e2c4;
+    padding: 8px 20px; font-size: 12px; display: flex; justify-content: space-between; gap: 12px;
+  }
+  .tabs { display: flex; gap: 8px; padding: 12px 20px 0; }
+  .tab {
+    padding: 7px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px;
+    background: #e6e8eb; color: #606266; border: 1px solid #dcdfe6; border-bottom: none;
+  }
+  .tab.on { background: #fff; color: #303133; font-weight: 600; }
+  .stage { padding: 0 20px 40px; }
+  .frame {
+    display: none; background: #f0f2f5; border: 1px solid #dcdfe6; border-radius: 0 8px 8px 8px;
+    overflow: hidden; min-height: 640px;
+  }
+  .frame.on { display: flex; }
+
+  /* 应用外壳 */
+  .side {
+    width: 186px; flex: none; background: #fff; border-right: 1px solid #e4e7ed;
+    padding: 14px 0;
+  }
+  .brand { padding: 0 16px 14px; font-weight: 600; font-size: 14px; }
+  .nav { padding: 9px 16px; font-size: 13px; color: #606266; display: flex; align-items: center; gap: 8px; }
+  .nav.on { color: #409eff; background: #ecf5ff; border-right: 2px solid #409eff; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
+  .main { flex: 1; min-width: 0; padding: 14px; }
+
+  .card { background: #fff; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,21,41,.06); margin-bottom: 12px; }
+  .card-hd {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-bottom: 1px solid #f0f0f0; font-weight: 600; font-size: 13px;
+  }
+  .card-bd { padding: 14px 16px; }
+  .hint { font-size: 12px; color: #909399; font-weight: 400; }
+
+  .tag {
+    display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px;
+    font-size: 12px; line-height: 1; border: 1px solid transparent; white-space: nowrap;
+  }
+  .tag-blue { background: #ecf5ff; color: #409eff; border-color: #d9ecff; }
+  .tag-green { background: #f0f9eb; color: #67c23a; border-color: #e1f3d8; }
+  .tag-orange { background: #fdf6ec; color: #e6a23c; border-color: #faecd8; }
+  .tag-gray { background: #f4f4f5; color: #909399; border-color: #e9e9eb; }
+  .tag-red { background: #fef0f0; color: #f56c6c; border-color: #fde2e2; }
+  .tag-dark { background: #409eff; color: #fff; }
+
+  .env { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,21,41,.06); }
+  .env .grow { flex: 1; }
+  .btn {
+    display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border-radius: 4px;
+    border: 1px solid #dcdfe6; background: #fff; color: #606266; font-size: 13px; cursor: default;
+  }
+  .btn-primary { background: #409eff; border-color: #409eff; color: #fff; }
+  .btn-sm { height: 26px; padding: 0 10px; font-size: 12px; }
+  .btn-link { border: none; background: none; color: #409eff; padding: 0 4px; }
+
+  /* A 入口 */
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .mode { border: 1px solid #e4e7ed; border-radius: 6px; padding: 10px 12px; background: #fafafa; }
+  .mode.on { border-color: #409eff; background: #ecf5ff; }
+  .mode b { display: block; font-size: 13px; margin-bottom: 3px; }
+  .mode span { font-size: 12px; color: #909399; }
+
+  .wall { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .pcard { border: 1px solid #ebeef5; border-radius: 6px; overflow: hidden; cursor: default; }
+  .pcard:hover { border-color: #c0c4cc; }
+  .thumb {
+    height: 104px; background: #f5f7fa; display: flex; align-items: center; justify-content: center;
+    color: #c0c4cc; font-size: 12px; position: relative;
+  }
+  .thumb .badge { position: absolute; top: 8px; left: 8px; }
+  .pbody { padding: 10px; }
+  .ptitle { font-size: 13px; line-height: 1.45; height: 38px; overflow: hidden; }
+  .pmeta { font-size: 12px; color: #909399; margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+  .bar { height: 4px; border-radius: 2px; background: #f0f2f5; margin-top: 8px; overflow: hidden; }
+  .bar > i { display: block; height: 4px; }
+  .bar-ok > i { background: #67c23a; width: 100%; }
+  .bar-run > i { background: #e6a23c; }
+  .foot-note { font-size: 12px; color: #909399; margin-top: 4px; }
+
+  /* A 详情 */
+  .detail-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #fff; border-radius: 6px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,21,41,.06); }
+  .detail-body { display: flex; gap: 12px; align-items: flex-start; }
+  .rail { width: 214px; flex: none; background: #fff; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,21,41,.06); }
+  .rail-hd { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; font-size: 12px; color: #909399; }
+  .shot-row { padding: 8px 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; border-left: 2px solid transparent; cursor: default; }
+  .shot-row.on { background: #ecf5ff; border-left-color: #409eff; }
+  .shot-row .idx { font-weight: 600; color: #409eff; width: 22px; }
+  .shot-row .txt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #606266; }
+  .editor { flex: 1; min-width: 0; }
+  .tabs2 { display: flex; gap: 22px; padding: 0 16px; background: #fff; border-bottom: 1px solid #e4e7ed; border-radius: 6px 6px 0 0; }
+  .tabs2 div { padding: 12px 0; font-size: 13px; color: #606266; border-bottom: 2px solid transparent; }
+  .tabs2 div.on { color: #409eff; border-bottom-color: #409eff; font-weight: 600; }
+  .editor-body { background: #fff; padding: 16px; border-radius: 0 0 6px 6px; box-shadow: 0 1px 4px rgba(0,21,41,.06); }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: #606266; margin-bottom: 6px; }
+  .input, .textarea {
+    border: 1px solid #dcdfe6; border-radius: 4px; padding: 8px 11px; font-size: 13px;
+    background: #fff; color: #303133; line-height: 1.6;
+  }
+  .textarea { min-height: 62px; }
+  .textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #606266; min-height: 74px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .collapsed {
+    border: 1px dashed #dcdfe6; border-radius: 4px; padding: 8px 11px; font-size: 12px; color: #909399;
+    display: flex; justify-content: space-between;
+  }
+  .renderbar {
+    display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 6px;
+    padding: 10px 16px; margin-top: 12px; box-shadow: 0 1px 4px rgba(0,21,41,.06);
+    position: sticky; bottom: 12px;
+  }
+  .renderbar .track { flex: 1; height: 6px; border-radius: 3px; background: #f0f2f5; overflow: hidden; }
+  .renderbar .track > i { display: block; height: 6px; background: #67c23a; }
+
+  /* B 向导 */
+  .steps { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 6px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,21,41,.06); }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #909399; }
+  .step .no { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #dcdfe6; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  .step.on { color: #409eff; }
+  .step.on .no { background: #409eff; border-color: #409eff; color: #fff; }
+  .step.done .no { background: #f0f9eb; border-color: #67c23a; color: #67c23a; }
+  .line { flex: 1; height: 1px; background: #e4e7ed; }
+  .grid-b { display: flex; gap: 12px; align-items: flex-start; }
+  .grid-b .wide { flex: 1; min-width: 0; }
+  .grid-b .rail-b { width: 250px; flex: none; }
+
+  table.shots { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.shots th {
+    text-align: left; padding: 8px 10px; background: #fafafa; color: #909399; font-weight: 500;
+    border-bottom: 1px solid #ebeef5; white-space: nowrap;
+  }
+  table.shots td { padding: 9px 10px; border-bottom: 1px solid #f5f5f5; vertical-align: top; line-height: 1.6; }
+  table.shots tr:hover td { background: #fafcff; }
+  .cap { font-size: 11px; color: #c0c4cc; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #606266; padding: 10px 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="notice">
+  <span>静态预览 · 只做视觉确认，真实页面尚未改动。数据取自两条已出片方案。</span>
+  <span>创作工作台排版 A / B</span>
+</div>
+
+<div class="tabs">
+  <div class="tab on" data-frame="A">方案 A · 入口（方案库）</div>
+  <div class="tab" data-frame="A2">方案 A · 详情（编辑+出片）</div>
+  <div class="tab" data-frame="B">方案 B · 三步向导</div>
+</div>
+
+<div class="stage">
+
+  <!-- ============================== A ============================== -->
+  <div class="frame on" id="frame-A">
+    <div class="side">
+      <div class="brand">社媒自动化</div>
+      <div class="nav"><i class="dot"></i>首页</div>
+      <div class="nav"><i class="dot"></i>账号管理</div>
+      <div class="nav"><i class="dot"></i>素材管理</div>
+      <div class="nav"><i class="dot"></i>发布中心</div>
+      <div class="nav"><i class="dot"></i>爆款工作台</div>
+      <div class="nav on"><i class="dot"></i>创作工作台</div>
+      <div class="nav"><i class="dot"></i>关于</div>
+    </div>
+
+    <div class="main">
+      <div class="env">
+        <b style="font-size:14px;">创作工作台</b>
+        <span class="tag tag-green">ComfyUI 在线</span>
+        <span class="tag tag-gray">NVIDIA GeForce RTX 5060 Ti · 15.9GB</span>
+        <span class="tag tag-green">权重齐全</span>
+        <span class="tag tag-green">本地模型可用</span>
+        <span class="grow"></span>
+        <span class="hint">127.0.0.1:5008</span>
+        <span class="btn btn-sm">服务地址</span>
+        <span class="btn btn-sm">重新自检</span>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><span>新建方案</span><span class="hint">选一种入口，填一句话就能生成</span></div>
+        <div class="card-bd">
+          <div class="modes">
+            <div class="mode on"><b>爆款复刻</b><span>从已分析的爆款拆解推同构新片</span></div>
+            <div class="mode"><b>完全自创</b><span>给一个想法，直接出完整方案</span></div>
+            <div class="mode"><b>口播类</b><span>出口播稿 + 提词卡 + 分镜，不烧显卡</span></div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:12px; align-items:center;">
+            <div class="input" style="flex:1; color:#c0c4cc;">选一条已分析的爆款（共 23 条）→ 点这里展开选择</div>
+            <div class="input" style="width:180px; color:#c0c4cc;">画幅 竖屏 768×1344</div>
+            <span class="btn btn-primary">生成方案</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <span>我的方案 <span class="hint">3 份</span></span>
+          <span class="hint">出片进度直接标在卡片上</span>
+        </div>
+        <div class="card-bd">
+          <div class="wall">
+            <div class="pcard">
+              <div class="thumb"><span class="badge tag tag-green">已成片</span>竖屏封面</div>
+              <div class="pbody">
+                <div class="ptitle">老板问行不行，千万别急着说行</div>
+                <div class="pmeta"><span class="tag tag-gray">口播</span><span>7 镜 · 33s</span></div>
+                <div class="bar bar-ok"><i></i></div>
+                <div class="foot-note" style="color:#67c23a;">已成片 · 可回放</div>
+              </div>
+            </div>
+            <div class="pcard">
+              <div class="thumb"><span class="badge tag tag-green">已成片</span>竖屏封面</div>
+              <div class="pbody">
+                <div class="ptitle">2000块，3平米厨房塞满全套厨电</div>
+                <div class="pmeta"><span class="tag tag-gray">自创</span><span>6 镜 · 24s</span></div>
+                <div class="bar bar-ok"><i></i></div>
+                <div class="foot-note" style="color:#67c23a;">已成片 · 可回放</div>
+              </div>
+            </div>
+            <div class="pcard">
+              <div class="thumb"><span class="badge tag tag-orange">出片中</span>竖屏封面</div>
+              <div class="pbody">
+                <div class="ptitle">为什么你越努力越穷，三个认知陷阱</div>
+                <div class="pmeta"><span class="tag tag-gray">口播</span><span>5 镜 · 20s</span></div>
+                <div class="bar bar-run"><i style="width:60%"></i></div>
+                <div class="foot-note" style="color:#e6a23c;">出片中 3/5 · 第 4 镜生成中</div>
+              </div>
+            </div>
+            <div class="pcard" style="border-style:dashed; display:flex; align-items:center; justify-content:center; min-height:212px;">
+              <div style="text-align:center; color:#c0c4cc; font-size:13px;">＋ 新建方案</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="opacity:.72;">
+        <div class="card-hd"><span>点开任意方案 → 详情页</span><span class="hint">下一屏就是这个</span></div>
+        <div class="card-bd hint">左侧分镜目录常驻，主区按「方案 / 分镜 / 出片 / 导出」分 tab，出片条吸底。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== A 详情 ============================== -->
+  <div class="frame" id="frame-A2" data-parent="A">
+    <div class="side">
+      <div class="brand">社媒自动化</div>
+      <div class="nav"><i class="dot"></i>首页</div>
+      <div class="nav"><i class="dot"></i>账号管理</div>
+      <div class="nav"><i class="dot"></i>素材管理</div>
+      <div class="nav"><i class="dot"></i>发布中心</div>
+      <div class="nav"><i class="dot"></i>爆款工作台</div>
+      <div class="nav on"><i class="dot"></i>创作工作台</div>
+      <div class="nav"><i class="dot"></i>关于</div>
+    </div>
+    <div class="main">
+      <div class="detail-head">
+        <span class="btn btn-sm">← 返回方案库</span>
+        <b>老板问行不行，千万别急着说行</b>
+        <span class="tag tag-gray">口播</span>
+        <span class="hint">7 镜 · 约 33.4s · 竖屏 768×1344</span>
+        <span style="flex:1"></span>
+        <span class="tag tag-green">已成片</span>
+        <span class="btn btn-sm">保存修改</span>
+      </div>
+
+      <div class="detail-body">
+        <div class="rail">
+          <div class="rail-hd">分镜目录 · 7</div>
+          <div class="shot-row on"><span class="idx">#1</span><span class="txt">老板问「这事行吗」</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#2</span><span class="txt">先问清三件事</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#3</span><span class="txt">空镜 · 办公室走廊</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#4</span><span class="txt">急着答应最贵</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#5</span><span class="txt">给条件不给结论</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#6</span><span class="txt">空镜 · 会议室</span><span class="tag tag-green">已出</span></div>
+          <div class="shot-row"><span class="idx">#7</span><span class="txt">收尾行动指令</span><span class="tag tag-green">已出</span></div>
+          <div style="padding:10px 12px; border-top:1px solid #f0f0f0;">
+            <div class="hint">口播稿 7 段 · 全部带台词</div>
+          </div>
+        </div>
+
+        <div class="editor">
+          <div class="tabs2">
+            <div class="on">方案</div>
+            <div>分镜 7</div>
+            <div>出片</div>
+            <div>导出</div>
+          </div>
+          <div class="editor-body">
+            <div class="field">
+              <label>标题</label>
+              <div class="input">老板问行不行，千万别急着说行</div>
+            </div>
+            <div class="row3">
+              <div class="field"><label>类型</label><div class="input">口播科普</div></div>
+              <div class="field"><label>目标人群</label><div class="input">职场新人</div></div>
+              <div class="field"><label>取胜点</label><div class="input">反常识 + 可执行话术</div></div>
+            </div>
+            <div class="field">
+              <label>前 3 秒钩子</label>
+              <div class="textarea">老板问「这事行吗」，你要是顺口说「行」，后面所有代价都得你背。</div>
+            </div>
+            <div class="field">
+              <label>人物与场景设定</label>
+              <div class="textarea">28 岁男，短黑发，深灰西装外套白 T，明亮现代办公室米色墙前，柔光，固定机位半身。</div>
+            </div>
+
+            <div style="border-top:1px solid #f0f0f0; margin:16px 0 14px;"></div>
+
+            <div class="row2">
+              <div class="field">
+                <label>#1 画面</label>
+                <div class="textarea" style="min-height:52px;">半身对镜头说话，表情平稳，办公室虚景</div>
+              </div>
+              <div class="field">
+                <label>#1 口播（会被写进提示词）</label>
+                <div class="textarea" style="min-height:52px; border-color:#409eff; background:#fafcff;">老板问「这事行吗」，别急着说「行」。</div>
+              </div>
+            </div>
+            <div class="row3">
+              <div class="field"><label>字幕</label><div class="input">别急着说行</div></div>
+              <div class="field"><label>运镜</label><div class="input">固定机位</div></div>
+              <div class="field"><label>时长</label><div class="input">5 秒</div></div>
+            </div>
+            <div class="collapsed">
+              <span>出片提示词（英文）· 已含台词 says in Mandarin Chinese: "老板问「这事行吗」…"</span>
+              <span>展开</span>
+            </div>
+
+            <div class="legend">
+              <span>· 台词改了口播，提示词会跟着重拼</span>
+              <span>· 提示词折叠，避免每镜 4 个输入框全铺开</span>
+            </div>
+          </div>
+
+          <div class="renderbar">
+            <span class="tag tag-green">已成片</span>
+            <span class="hint">7/7 镜 · 用时 71 分钟</span>
+            <div class="track"><i style="width:100%"></i></div>
+            <span class="btn btn-sm">补出失败镜</span>
+            <span class="btn btn-sm btn-primary">看片</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== B ============================== -->
+  <div class="frame" id="frame-B">
+    <div class="side">
+      <div class="brand">社媒自动化</div>
+      <div class="nav"><i class="dot"></i>首页</div>
+      <div class="nav"><i class="dot"></i>账号管理</div>
+      <div class="nav"><i class="dot"></i>素材管理</div>
+      <div class="nav"><i class="dot"></i>发布中心</div>
+      <div class="nav"><i class="dot"></i>爆款工作台</div>
+      <div class="nav on"><i class="dot"></i>创作工作台</div>
+      <div class="nav"><i class="dot"></i>关于</div>
+    </div>
+    <div class="main">
+      <div class="steps">
+        <div class="step done"><span class="no">✓</span>选题</div>
+        <div class="line"></div>
+        <div class="step on"><span class="no">2</span>方案与分镜</div>
+        <div class="line"></div>
+        <div class="step"><span class="no">3</span>出片验收</div>
+        <div class="line"></div>
+        <div class="step"><span class="no">4</span>导出发布</div>
+      </div>
+
+      <div class="grid-b">
+        <div class="wide">
+          <div class="card">
+            <div class="card-hd"><span>② 方案与分镜</span><span class="hint">表格式，7 镜一屏看完，点行展开编辑</span></div>
+            <div class="card-bd">
+              <table class="shots">
+                <thead>
+                  <tr><th style="width:36px;">#</th><th style="width:52px;">时长</th><th>台词 / 字幕</th><th style="width:96px;">画面</th><th style="width:74px;">出片</th></tr>
+                </thead>
+                <tbody>
+                  <tr style="background:#fafcff;"><td><b style="color:#409eff;">1</b></td><td>5s</td><td>老板问「这事行吗」，别急着说「行」。<div class="cap">字幕：别急着说行</div></td><td>半身说话</td><td><span class="tag tag-green">已出</span></td></tr>
+                  <tr><td><b style="color:#409eff;">2</b></td><td>5s</td><td>先说清三件事：谁定、什么时候要、要花多少钱。<div class="cap">字幕：先问清三件事</div></td><td>半身说话</td><td><span class="tag tag-green">已出</span></td></tr>
+                  <tr><td><b style="color:#409eff;">3</b></td><td>4s</td><td><span style="color:#c0c4cc;">（空镜无台词）</span><div class="cap">字幕：急着答应最贵</div></td><td>走廊空镜</td><td><span class="tag tag-green">已出</span></td></tr>
+                  <tr><td><b style="color:#409eff;">4</b></td><td>5s</td><td>你一答应，时间、人力、预算就全锁死了。<div class="cap">字幕：答应就是锁死</div></td><td>半身说话</td><td><span class="tag tag-orange">生成中</span></td></tr>
+                  <tr><td><b style="color:#409eff;">5</b></td><td>5s</td><td>正确回法是给条件，不给结论。<div class="cap">字幕：给条件不给结论</div></td><td>半身说话</td><td><span class="tag tag-gray">待生成</span></td></tr>
+                  <tr><td><b style="color:#409eff;">6</b></td><td>4s</td><td><span style="color:#c0c4cc;">（空镜无台词）</span><div class="cap">字幕：会议室</div></td><td>会议室空镜</td><td><span class="tag tag-gray">待生成</span></td></tr>
+                  <tr><td><b style="color:#409eff;">7</b></td><td>5s</td><td>下次老板再问，你就先把这三件事问回去。<div class="cap">字幕：先问回去</div></td><td>半身说话</td><td><span class="tag tag-gray">待生成</span></td></tr>
+                </tbody>
+              </table>
+              <div style="display:flex; gap:10px; margin-top:14px;">
+                <span class="btn btn-sm">＋ 加一镜</span>
+                <span class="btn btn-sm">导出分镜表</span>
+                <span style="flex:1"></span>
+                <span class="btn btn-sm">上一步</span>
+                <span class="btn btn-sm btn-primary">下一步：出片</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rail-b">
+          <div class="card">
+            <div class="card-hd"><span>我的方案</span><span class="hint">3</span></div>
+            <div class="card-bd" style="padding:8px 10px;">
+              <div style="border:1px solid #409eff; background:#ecf5ff; border-radius:4px; padding:8px; margin-bottom:8px;">
+                <div style="font-size:12px; line-height:1.5;">老板问行不行，千万别急着说行</div>
+                <div class="hint" style="margin-top:4px;">口播 · 7 镜 · <span style="color:#67c23a;">已成片</span></div>
+              </div>
+              <div style="border:1px solid #ebeef5; border-radius:4px; padding:8px; margin-bottom:8px;">
+                <div style="font-size:12px; line-height:1.5;">2000块，3平米厨房塞满全套厨电</div>
+                <div class="hint" style="margin-top:4px;">自创 · 6 镜 · <span style="color:#67c23a;">已成片</span></div>
+              </div>
+              <div style="border:1px solid #ebeef5; border-radius:4px; padding:8px;">
+                <div style="font-size:12px; line-height:1.5;">为什么你越努力越穷</div>
+                <div class="hint" style="margin-top:4px;">口播 · 5 镜 · <span style="color:#e6a23c;">出片中 3/5</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-bd hint">B 的代价：改一镜要停在第二步，看片要跳到第三步，长任务进度不在视线里。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('on'); });
+      t.classList.add('on');
+      var id = t.dataset.frame;
+      document.querySelectorAll('.frame').forEach(function (f) { f.classList.remove('on'); });
+      var f = document.getElementById('frame-' + id);
+      if (f) f.classList.add('on');
+    });
+  });
+  // 点方案卡片 / 返回按钮在入口页与详情页之间切换
+  document.querySelectorAll('.pcard').forEach(function (c) {
+    c.addEventListener('click', function () {
+      document.getElementById('frame-A').classList.remove('on');
+      document.getElementById('frame-A2').classList.add('on');
+    });
+  });
+  document.querySelectorAll('.btn').forEach(function (b) {
+    if (b.textContent.indexOf('返回方案库') >= 0) {
+      b.addEventListener('click', function () {
+        document.getElementById('frame-A2').classList.remove('on');
+        document.getElementById('frame-A').classList.add('on');
+      });
+    }
+  });
+</script>
+</body>
+</html>
