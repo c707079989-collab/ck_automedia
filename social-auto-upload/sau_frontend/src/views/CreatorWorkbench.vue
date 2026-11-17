@@ -164,6 +164,72 @@
         </el-empty>
 
         <template v-else>
+          <!-- 爆款复刻：把这条方案的「出处」摆出来，能对照、能点回原片 -->
+          <div v-if="plan.source?.type === 'viral'" class="viral-ref">
+            <div class="vr-head">
+              <span class="vr-tag">参考爆款</span>
+              <el-tag v-if="srcA.score" size="small" type="danger" effect="dark">{{ srcA.score }}分</el-tag>
+              <span :class="['vr-title', { link: !!plan.source.url }]" @click="openSourceUrl">
+                {{ plan.source.title || '（这条没记录原片标题）' }}
+              </span>
+              <span class="spacer" />
+              <el-button link size="small" @click="viralOpen = !viralOpen">
+                {{ viralOpen ? '收起原片拆解' : '展开原片拆解' }}
+              </el-button>
+            </div>
+
+            <div class="vr-diff">
+              <div class="vr-col">
+                <label>原片钩子</label>
+                <p>{{ srcA.hook || '—' }}</p>
+              </div>
+              <div class="vr-col mine">
+                <label>本片钩子</label>
+                <p>{{ plan.hook || '（还没写，可在下面补）' }}</p>
+              </div>
+            </div>
+
+            <div class="vr-diff">
+              <div class="vr-col">
+                <label>可复用套路</label>
+                <p>{{ srcA.reusable || '—' }}</p>
+              </div>
+              <div class="vr-col">
+                <label>做的时候要避开</label>
+                <p>{{ srcA.risks || '—' }}</p>
+              </div>
+            </div>
+
+            <div v-show="viralOpen" class="vr-detail">
+              <div v-if="srcA.structure?.length" class="vr-block">
+                <label>原片结构</label>
+                <ol><li v-for="(x, i) in srcA.structure" :key="'st' + i">{{ x }}</li></ol>
+              </div>
+              <div v-if="srcA.remake?.length" class="vr-block">
+                <label>原片翻拍建议</label>
+                <ul><li v-for="(x, i) in srcA.remake" :key="'rm' + i">{{ x }}</li></ul>
+              </div>
+              <div v-if="srcA.why_viral?.length" class="vr-block">
+                <label>为什么爆</label>
+                <ul><li v-for="(x, i) in srcA.why_viral" :key="'wv' + i">{{ x }}</li></ul>
+              </div>
+              <div v-if="srcA.emotion" class="vr-block">
+                <label>情绪落点</label><p>{{ srcA.emotion }}</p>
+              </div>
+              <div v-if="srcA.title_formula" class="vr-block">
+                <label>标题公式</label><p>{{ srcA.title_formula }}</p>
+              </div>
+              <div v-if="srcA.verdict" class="vr-block">
+                <label>爆款判定</label><p>{{ srcA.verdict }}</p>
+              </div>
+              <div v-if="!srcA.hook" class="vr-block">
+                <label>提示</label>
+                <p>这条方案生成时没把原片拆解一起存下来（旧版本生成的）。
+                  去爆款工作台对这条重新点一次「分析」，或重新生成方案即可。</p>
+              </div>
+            </div>
+          </div>
+
           <div class="plan-edit">
             <el-input v-model="plan.title" size="large" placeholder="标题" />
             <div class="row3">
@@ -270,72 +336,6 @@
         </el-empty>
 
         <template v-else>
-          <!-- 爆款复刻：把这条方案的「出处」摆出来，能对照、能点回原片 -->
-          <div v-if="plan.source?.type === 'viral'" class="viral-ref">
-            <div class="vr-head">
-              <span class="vr-tag">参考爆款</span>
-              <el-tag v-if="srcA.score" size="small" type="danger" effect="dark">{{ srcA.score }}分</el-tag>
-              <span :class="['vr-title', { link: !!plan.source.url }]" @click="openSourceUrl">
-                {{ plan.source.title || '（这条没记录原片标题）' }}
-              </span>
-              <span class="spacer" />
-              <el-button link size="small" @click="viralOpen = !viralOpen">
-                {{ viralOpen ? '收起原片拆解' : '展开原片拆解' }}
-              </el-button>
-            </div>
-
-            <div class="vr-diff">
-              <div class="vr-col">
-                <label>原片钩子</label>
-                <p>{{ srcA.hook || '—' }}</p>
-              </div>
-              <div class="vr-col mine">
-                <label>本片钩子</label>
-                <p>{{ plan.hook || '（还没写，可在下面补）' }}</p>
-              </div>
-            </div>
-
-            <div class="vr-diff">
-              <div class="vr-col">
-                <label>可复用套路</label>
-                <p>{{ srcA.reusable || '—' }}</p>
-              </div>
-              <div class="vr-col">
-                <label>做的时候要避开</label>
-                <p>{{ srcA.risks || '—' }}</p>
-              </div>
-            </div>
-
-            <div v-show="viralOpen" class="vr-detail">
-              <div v-if="srcA.structure?.length" class="vr-block">
-                <label>原片结构</label>
-                <ol><li v-for="(x, i) in srcA.structure" :key="'st' + i">{{ x }}</li></ol>
-              </div>
-              <div v-if="srcA.remake?.length" class="vr-block">
-                <label>原片翻拍建议</label>
-                <ul><li v-for="(x, i) in srcA.remake" :key="'rm' + i">{{ x }}</li></ul>
-              </div>
-              <div v-if="srcA.why_viral?.length" class="vr-block">
-                <label>为什么爆</label>
-                <ul><li v-for="(x, i) in srcA.why_viral" :key="'wv' + i">{{ x }}</li></ul>
-              </div>
-              <div v-if="srcA.emotion" class="vr-block">
-                <label>情绪落点</label><p>{{ srcA.emotion }}</p>
-              </div>
-              <div v-if="srcA.title_formula" class="vr-block">
-                <label>标题公式</label><p>{{ srcA.title_formula }}</p>
-              </div>
-              <div v-if="srcA.verdict" class="vr-block">
-                <label>爆款判定</label><p>{{ srcA.verdict }}</p>
-              </div>
-              <div v-if="!srcA.hook" class="vr-block">
-                <label>提示</label>
-                <p>这条方案生成时没把原片拆解一起存下来（旧版本生成的）。
-                  去爆款工作台对这条重新点一次「分析」，或重新生成方案即可。</p>
-              </div>
-            </div>
-          </div>
-
           <div class="render-bar">
             <template v-if="plan.mode !== 'talking'">
               <el-button type="primary" @click="render" :loading="rendering" :disabled="taskRunning">
