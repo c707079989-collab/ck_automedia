@@ -1182,8 +1182,9 @@ def creator_make_plan():
             if not src:
                 return jsonify({"code": 404, "data": None,
                                 "msg": "这条还没有分析结果，请先在爆款工作台点「分析」"}), 404
-            res = m["planner"].from_source_item(item_id, src.get("analysis") or {},
-                                                extra, fmt)
+            res = m["planner"].from_source_item(
+                item_id, src.get("analysis") or {}, extra, fmt,
+                source_title=src.get("title", ""), url=src.get("url", ""))
             # 把原爆款的身份信息补全，方案详情页要能点回原片
             ss = res["plan"].setdefault("source", {})
             ss.update({
@@ -1198,6 +1199,10 @@ def creator_make_plan():
                                             "format": fmt})
         plan = res["plan"]
         # 失败（模型没给结构化结果）也要落盘成方案：用户写的内容不能因为一次失败就丢了
+        # 带 plan_id 时覆盖原方案（前端「重新生成」用），避免每次重试都多出一条空壳方案
+        overwrite_id = str(body.get("plan_id") or "").strip()
+        if overwrite_id:
+            plan["id"] = overwrite_id
         if body.get("save", True):
             plan = m["pipeline"].save_plan(plan)
         return jsonify({"code": 200, "data": {"plan": plan, "ok": res["ok"],

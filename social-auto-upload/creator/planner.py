@@ -211,7 +211,9 @@ def normalize(raw: Dict[str, Any], mode: str, fmt: str, source: Dict[str, Any]) 
         })
 
     if not shots:
-        shots = _fallback_shots(str(raw.get("title") or source.get("brief") or "主题"), mode)
+        shots = _fallback_shots(
+            str(raw.get("title") or source.get("brief") or source.get("title") or "主题"),
+            mode, source)
 
     total = sum(s["seconds"] for s in shots)
     want_fmt = str(raw.get("format") or fmt)
@@ -242,9 +244,22 @@ def normalize(raw: Dict[str, Any], mode: str, fmt: str, source: Dict[str, Any]) 
     }
 
 
-def _fallback_shots(topic: str, mode: str) -> List[Dict[str, Any]]:
-    """LLM 挂了也要给一份能看的骨架，不让页面空着。"""
-    beats = ["抛出问题/结果前置", "给出第一个要点", "给出第二个要点", "反常识补充", "收尾行动指令"]
+def _fallback_shots(topic: str, mode: str, source: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """模型挂了/超时也要给一份能看、有内容的骨架，不让页面空着。
+
+    爆款复刻时 source.analysis 里有采集阶段已分析好的拆解，直接拿它的结构/翻拍建议
+    当分镜内容——这样即便模型超时，用户看到的也是"基于原片拆解的应急方案"，
+    而不是全是"关于主题"的空壳。
+    """
+    src = source or {}
+    analysis = src.get("analysis") if isinstance(src.get("analysis"), dict) else {}
+    # 依次优先：翻拍建议（本就是一条条动作）→ 原片结构 → 通用节拍
+    beats = [str(x).strip() for x in (
+        analysis.get("remake") or analysis.get("structure") or []) if str(x).strip()]
+    beats = [b for b in beats if b][:8]
+    if not beats:
+        beats = ["抛出问题/结果前置", "给出第一个要点", "给出第二个要点", "反常识补充", "收尾行动指令"]
+    hook = str(analysis.get("hook") or "").strip()
     out = []
     for i, b in enumerate(beats):
         vo = b if mode == "talking" else ""
@@ -252,10 +267,10 @@ def _fallback_shots(topic: str, mode: str) -> List[Dict[str, Any]]:
             f"a person speaks to camera in a clean bright room about {topic}, medium shot, natural light", vo)
         out.append({
             "idx": i + 1, "seconds": 4.0,
-            "visual": f"{b}（{topic}）",
+            "visual": f"{'钩子：' + hook if (i == 0 and hook) else ''}{b}".strip("："),
             "prompt": body, "prompt_body": body,
             "camera": "固定机位" if mode == "talking" else "手持跟拍",
-            "subtitle": b, "voiceover": vo, "audio": "环境音",
+            "subtitle": b[:15], "voiceover": vo, "audio": "环境音",
         })
     return out
 
@@ -317,6 +332,21 @@ def build(mode: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if not raw:
         plan = normalize({}, mode, fmt, source)
         plan["title"] = str(payload.get("brief") or payload.get("source_title") or plan["title"])[:60]
+        # 模型没出结构化结果时，把已存的原片拆解铺进可读字段，避免"全空方案"
+        if mode == "viral":
+            a = payload.get("analysis") or {}
+            base_title = str(payload.get("source_title") or "").strip()
+            if base_title:
+                plan["title"] = ("复刻·" + base_title)[:60]
+            plan["hook"] = str(a.get("hook") or "").strip()
+            plan["angle"] = str(a.get("reusable") or a.get("why_viral") or "").strip()[:120]
+            if isinstance(a.get("why_viral"), list) and a["why_viral"]:
+                plan["angle"] = "；".join(str(x) for x in a["why_viral"][:3])[:120]
+            plan["script"] = "【应急方案·模型生成超时】下面是采集阶段已分析好的原片拆解，可直接照着改稿：\n" + \
+                "钩子：" + plan["hook"] + "\n" + \
+                "可复用套路：" + str(a.get("reusable") or "").strip() + "\n" + \
+                "翻拍建议：" + "；".join(str(x) for x in (a.get("remake") or [])[:5])
+            plan["identity"] = str(a.get("emotion") or "").strip()
         plan["engine"] = "fallback"
         plan["error"] = r.get("error") or "模型没有返回可解析的 JSON"
         plan["ms"] = int((time.time() - t0) * 1000)
@@ -328,13 +358,17 @@ def build(mode: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": True, "plan": plan, "error": "", "ms": plan["ms"]}
 
 
-def from_source_item(item_id: str, analysis: Dict[str, Any], extra: str, fmt: str) -> Dict[str, Any]:
-    """从爆款工作台的分析结果直接起一条方案。"""
+def from_source_item(item_id: str, analysis: Dict[str, Any], extra: str, fmt: str,
+                     source_title: str = "", url: str = "") -> Dict[str, Any]:
+    """从爆款工作台的分析结果直接起一条方案。
+
+    source_title/url 从分析文件外层传进来（analysis 子对象里没有 title/url）。
+    """
     payload = {
         "analysis": analysis,
         "item_id": item_id,
-        "source_title": analysis.get("title", ""),
-        "url": analysis.get("url", ""),
+        "source_title": source_title or analysis.get("title", ""),
+        "url": url or analysis.get("url", ""),
         "extra": extra,
         "format": fmt,
     }

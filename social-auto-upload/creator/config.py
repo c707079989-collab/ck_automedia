@@ -45,7 +45,9 @@ DEFAULTS: Dict[str, Any] = {
     "fps": 24,
     "timeout": 1800,            # 单段轮询上限（秒）
     "agent_model": "",          # 空 = 用 hot_capture.agent_cli 的默认本地模型
-    "agent_timeout": 420,
+    # 本地 27B 生成一份完整方案 JSON 实测 285~420s+ 波动很大，420s 卡在中位数
+    # 导致约一半概率超时降级成空壳。放宽到 900s，并把兜底骨架改成基于真实分析填充。
+    "agent_timeout": 900,
 }
 
 # 画幅：宽高必须被 32 整除，否则模型直接报错

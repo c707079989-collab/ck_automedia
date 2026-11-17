@@ -109,6 +109,33 @@
               </div>
             </div>
           </el-scrollbar>
+
+          <!-- 选中的爆款在分析阶段已经拆好的结果：这里只是读出来给人看，不会重新分析 -->
+          <div v-if="form.item_id" class="analysis-preview">
+            <div class="ap-head">
+              <span class="ap-title">这条在采集阶段已分析好的拆解</span>
+              <span class="ap-badge">直接复用 · 不重新分析</span>
+            </div>
+            <div v-if="selAnalysisLoading" class="ap-body ap-muted">读取本地分析缓存…</div>
+            <div v-else-if="selAnalysis && Object.keys(selAnalysis).length" class="ap-body">
+              <div class="ap-row"><label>钩子</label><span>{{ selAnalysis.hook || '—' }}</span></div>
+              <div class="ap-row" v-if="selAnalysis.structure?.length">
+                <label>结构</label>
+                <span>{{ selAnalysis.structure.slice(0, 4).join(' → ') }}</span>
+              </div>
+              <div class="ap-row" v-if="selAnalysis.reusable">
+                <label>可复用套路</label><span>{{ selAnalysis.reusable }}</span>
+              </div>
+              <div class="ap-row" v-if="selAnalysis.remake?.length">
+                <label>翻拍建议</label><span>{{ selAnalysis.remake.slice(0, 3).join('；') }}</span>
+              </div>
+              <div class="ap-row" v-if="selAnalysis.why_viral?.length">
+                <label>为什么爆</label><span>{{ selAnalysis.why_viral.slice(0, 3).join('；') }}</span>
+              </div>
+              <div class="ap-foot">模型会照着这份拆解做同构改写，换人设换场景、不照抄原片。</div>
+            </div>
+            <div v-else class="ap-body ap-muted">这条没有读到分析结果，去爆款工作台点一次「分析」后再来。</div>
+          </div>
         </div>
 
         <!-- 自创 / 口播 -->
@@ -138,11 +165,25 @@
         </div>
 
         <div class="step-foot">
-          <span v-if="making" class="making-tip">本地 27B 模型在写方案，通常 1-3 分钟，别关页面。</span>
-          <span v-else class="hint">生成后自动进入第 2 步改稿；写一半也会自动存成「临时方案」，随时能还原</span>
-          <el-button type="primary" size="large" :loading="making" @click="makePlan">
-            {{ making ? '生成中…' : '生成方案 →' }}
-          </el-button>
+          <!-- 生成方案时把「在干什么」摊开讲清楚：这一步不是重新分析视频，而是复用已存拆解让本地模型改写成分镜方案 -->
+          <div v-if="making" class="making-progress">
+            <div class="mp-head">
+              <span class="mp-spinner"></span>
+              <b>正在改写成分镜方案</b>
+              <span class="mp-sec">已等待 {{ makingSec }}s</span>
+            </div>
+            <p class="mp-desc">视频分析在采集阶段已完成并直接复用，这里<strong>不会重新分析视频</strong>。本地 27B 模型正在照着原片拆解写一条同构新片的钩子、分镜、台词和出片提示词，全程离线，别关页面。</p>
+            <ol class="mp-steps">
+              <li v-for="(s, i) in makingStages" :key="i"
+                  :class="{ done: i < makingStage, on: i === makingStage }">
+                <span class="mp-dot">{{ i < makingStage ? '✓' : i + 1 }}</span>{{ s }}
+              </li>
+            </ol>
+          </div>
+          <template v-else>
+            <span class="hint">分析好的爆款拆解会直接复用，不会重新分析视频；本地模型改写成分镜方案，通常 1-3 分钟</span>
+            <el-button type="primary" size="large" @click="makePlan">生成方案 →</el-button>
+          </template>
         </div>
       </el-card>
 
@@ -164,10 +205,34 @@
         </el-empty>
 
         <template v-else>
+          <!-- 在方案页重新生成时，这里也给一个进行中的反馈 -->
+          <div v-if="making" class="making-progress regen-progress">
+            <div class="mp-head">
+              <span class="mp-spinner"></span>
+              <b>正在重新写方案</b>
+              <span class="mp-sec">已等待 {{ makingSec }}s</span>
+            </div>
+            <p class="mp-desc">本地 27B 模型正在重新改写，通常 1-8 分钟；原来的应急方案会在成功后被覆盖。</p>
+          </div>
+
+          <!-- 模型超时/失败时把原因摊开讲清楚，并给一键重试，不让用户对着空方案猜 -->
+          <el-alert v-if="plan.engine === 'fallback'" class="fallback-alert"
+                    type="warning" :closable="false" show-icon>
+            <template #title>
+              本地模型这次没能在时限内写完方案（{{ plan.error || '生成失败' }}）。
+              下面已用采集阶段分析好的原片拆解填了一份应急方案，可直接改稿；也可以
+              <el-button link type="primary" :loading="making" @click="regenerate">重新生成</el-button>
+              （超时是概率事件，重试一次通常就成功）。
+            </template>
+          </el-alert>
+
           <!-- 爆款复刻：把这条方案的「出处」摆出来，能对照、能点回原片 -->
           <div v-if="plan.source?.type === 'viral'" class="viral-ref">
+            <div class="vr-note">
+              下面的<strong>原片拆解</strong>是采集阶段已分析好、这里直接复用的；<strong>本片</strong>是本地模型照着它改写出来的新方案。
+            </div>
             <div class="vr-head">
-              <span class="vr-tag">参考爆款</span>
+              <span class="vr-tag">原片拆解 · 已分析</span>
               <el-tag v-if="srcA.score" size="small" type="danger" effect="dark">{{ srcA.score }}分</el-tag>
               <span :class="['vr-title', { link: !!plan.source.url }]" @click="openSourceUrl">
                 {{ plan.source.title || '（这条没记录原片标题）' }}
@@ -479,6 +544,8 @@ const route = useRoute()
 const env = ref({})
 const presets = ref({ formats: [], topics: [], modes: [] })
 const analyzed = ref([])
+const selAnalysis = ref(null)          // 选中爆款的已存拆解（采集阶段分析的，直接复用）
+const selAnalysisLoading = ref(false)
 const plans = ref([])
 const drafts = ref([])
 const draftId = ref('')
@@ -497,6 +564,10 @@ const savedSnapshot = ref('')
 
 const loadingStatus = ref(false)
 const making = ref(false)
+const makingSec = ref(0)
+const makingStage = ref(0)
+const makingStages = ['读取原片拆解', '设计同构钩子与结构', '逐镜写画面/台词/提示词', '落盘成方案']
+let makingTimer = null
 const saving = ref(false)
 const rendering = ref(false)
 const maxShot = ref(5)
@@ -541,8 +612,8 @@ const finalUrl = computed(() => {
   return creatorApi.videoUrl(plan.value.id, finalName.value)
 })
 
-// 爆款复刻：方案里存的原始拆解
-const viralOpen = ref(false)
+// 爆款复刻：方案里存的原始拆解。默认展开，让"拿什么改写"一眼可见
+const viralOpen = ref(true)
 const srcA = computed(() => plan.value?.source?.analysis || {})
 
 function openSourceUrl() {
@@ -741,6 +812,38 @@ function resetForm() {
   form.source_title = ''
 }
 
+// 真正发请求的那一步：新建或覆盖都由它完成，进度面板也在这里统一驱动
+async function _generate(payload) {
+  making.value = true
+  makingSec.value = 0
+  makingStage.value = 0
+  // 阶段只是"大概在干到哪一步"的可视化，不精确对应后端；让等待过程看得见在动
+  clearInterval(makingTimer)
+  makingTimer = setInterval(() => {
+    makingSec.value += 1
+    const s = makingSec.value
+    makingStage.value = s < 8 ? 0 : s < 40 ? 1 : s < 90 ? 2 : 3
+  }, 1000)
+  try {
+    const r = await creatorApi.makePlan(payload)
+    plan.value = r.data.plan
+    savedSnapshot.value = snapshot(plan.value)
+    openShot.value = (plan.value.shots[0] || {}).idx || 1
+    viralOpen.value = true
+    task.value = null
+    step.value = 1
+    dropDraft()   // 已经成方案了，临时方案没用了
+    if (!r.data.ok) ElMessage.warning(r.data.error || '模型没给出完整方案，已生成兜底骨架（已存进我的方案）')
+    else ElMessage.success(`方案已生成（${Math.round(r.data.ms / 1000)}s）`)
+    loadPlans()
+    return r.data.ok
+  } catch (e) { return false } finally {
+    making.value = false
+    clearInterval(makingTimer)
+    makingTimer = null
+  }
+}
+
 async function makePlan() {
   if (form.mode === 'viral' && !form.item_id) {
     ElMessage.warning('先选一条已分析的爆款')
@@ -756,22 +859,26 @@ async function makePlan() {
         { type: 'warning', confirmButtonText: '继续生成', cancelButtonText: '取消' })
     } catch (e) { return }
   }
-  making.value = true
-  try {
-    const payload = { mode: form.mode, format: form.format, extra: form.extra, save: true }
-    if (form.mode === 'viral') payload.item_id = form.item_id
-    else payload.brief = form.brief
-    const r = await creatorApi.makePlan(payload)
-    plan.value = r.data.plan
-    savedSnapshot.value = snapshot(plan.value)
-    openShot.value = (plan.value.shots[0] || {}).idx || 1
-    task.value = null
-    step.value = 1
-    dropDraft()   // 已经成方案了，临时方案没用了
-    if (!r.data.ok) ElMessage.warning(r.data.error || '模型没给出完整方案，已生成兜底骨架（已存进我的方案）')
-    else ElMessage.success(`方案已生成（${Math.round(r.data.ms / 1000)}s）`)
-    loadPlans()
-  } catch (e) {} finally { making.value = false }
+  const payload = { mode: form.mode, format: form.format, extra: form.extra, save: true }
+  if (form.mode === 'viral') payload.item_id = form.item_id
+  else payload.brief = form.brief
+  await _generate(payload)
+}
+
+// 方案页「重新生成」：沿用当前方案的来源，覆盖它而不是新建一条
+async function regenerate() {
+  if (!plan.value) return
+  const p = plan.value
+  const payload = { format: p.format || form.format, extra: form.extra, save: true, plan_id: p.id }
+  const src = p.source || {}
+  if (src.type === 'viral' && src.item_id) {
+    payload.mode = 'viral'
+    payload.item_id = src.item_id
+  } else {
+    payload.mode = src.type === 'talking' ? 'talking' : 'original'
+    payload.brief = src.brief || form.brief || p.title || ''
+  }
+  await _generate(payload)
 }
 
 async function openPlan(id) {
@@ -780,7 +887,7 @@ async function openPlan(id) {
     plan.value = r.data
     savedSnapshot.value = snapshot(plan.value)
     openShot.value = (plan.value.shots?.[0] || {}).idx || 1
-    viralOpen.value = false
+    viralOpen.value = true
     task.value = null
     backfillViral()
     // 恢复该方案正在跑（或刚跑完）的出片任务，刷新页面不会丢进度
@@ -1039,6 +1146,19 @@ function openVideo() {
 watch(() => [form.mode, form.brief, form.item_id, form.extra, form.format], scheduleDraftSave)
 watch(step, scheduleDraftSave)
 
+// 选中哪条爆款，就把采集阶段已存的那份拆解读出来给人看（纯读本地缓存，不触发任何分析）
+async function loadSelAnalysis(itemId) {
+  selAnalysis.value = null
+  if (form.mode !== 'viral' || !itemId) return
+  selAnalysisLoading.value = true
+  try {
+    const r = await creatorApi.analysis(itemId)
+    selAnalysis.value = (r.data && (r.data.analysis || r.data)) || {}
+  } catch (e) { selAnalysis.value = {} }
+  finally { selAnalysisLoading.value = false }
+}
+watch(() => form.item_id, (v) => loadSelAnalysis(v))
+
 onMounted(async () => {
   // 从爆款工作台「用它出方案」跳过来时，自动切到爆款复刻并选中那条
   if (route.query.item_id) {
@@ -1052,6 +1172,7 @@ onMounted(async () => {
   loadAnalyzed()
   loadPlans()
   loadDrafts()
+  loadSelAnalysis(form.item_id)   // 草稿/路由还原时主动读一次已存拆解
   // 有正在跑的出片任务就直接接管，刷新页面不丢进度
   try {
     const t = await creatorApi.tasks()
@@ -1064,6 +1185,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   clearTimeout(draftTimer)
+  clearInterval(makingTimer)
   stopPolling()
 })
 </script>
@@ -1158,13 +1280,61 @@ onUnmounted(() => {
 .quick-topics { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
 .quick-tag { cursor: pointer; }
 
+.analysis-preview {
+  margin-top: 12px; border: 1px solid #ebeef5; border-left: 3px solid #409eff;
+  border-radius: 6px; background: #fafcff; padding: 10px 12px;
+  .ap-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ap-title { font-size: 13px; font-weight: 600; color: #303133; }
+  .ap-badge {
+    font-size: 11px; color: #67c23a; background: #f0f9eb;
+    border: 1px solid #e1f3d8; border-radius: 10px; padding: 1px 8px;
+  }
+  .ap-body { font-size: 12px; color: #5a6b82; line-height: 1.7; }
+  .ap-muted { color: #a0a8b5; }
+  .ap-row { display: flex; gap: 8px; margin-bottom: 3px; label { flex: 0 0 62px; color: #909399; } span { flex: 1; } }
+  .ap-foot {
+    margin-top: 8px; padding-top: 7px; border-top: 1px dashed #e4e9f0;
+    color: #e6a23c; font-size: 11px;
+  }
+}
+
 .form-row { display: flex; gap: 12px; align-items: flex-end; }
 .form-item {
   display: flex; flex-direction: column; gap: 6px;
   label { font-size: 12px; color: #606266; }
   &.grow { flex: 1; }
 }
-.making-tip { font-size: 12px; color: #e6a23c; }
+.making-progress {
+  flex: 1;
+  background: #f5f8ff;
+  border: 1px solid #d9e6ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  .mp-head { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #1f2d3d; }
+  .mp-spinner {
+    width: 15px; height: 15px; flex: 0 0 15px;
+    border: 2px solid #c6d8ff; border-top-color: #409eff; border-radius: 50%;
+    animation: mp-rotate .8s linear infinite;
+  }
+  @keyframes mp-rotate { to { transform: rotate(360deg); } }
+  .mp-sec { margin-left: auto; font-size: 12px; color: #909399; font-variant-numeric: tabular-nums; }
+  .mp-desc { margin: 8px 0 10px; font-size: 12px; color: #5a6b82; line-height: 1.7; strong { color: #e6a23c; } }
+  .mp-steps {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #b0b8c4; }
+    li.on { color: #409eff; font-weight: 600; }
+    li.done { color: #67c23a; }
+    .mp-dot {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 17px; height: 17px; border-radius: 50%;
+      border: 1px solid currentColor; font-size: 11px; line-height: 1;
+    }
+  }
+}
+
+.regen-progress { margin-bottom: 12px; }
+.fallback-alert { margin-bottom: 12px; }
 
 .step-foot {
   margin-top: 16px; padding-top: 14px; border-top: 1px solid #f0f0f0;
@@ -1233,6 +1403,12 @@ onUnmounted(() => {
 .viral-ref {
   background: #fff8f0; border: 1px solid #fbe3c8; border-radius: 6px;
   padding: 12px 14px; margin-bottom: 14px;
+}
+.vr-note {
+  font-size: 12px; color: #a16a24; background: #fff3e0;
+  border: 1px solid #ffe0b2; border-radius: 4px; padding: 6px 10px;
+  margin-bottom: 10px; line-height: 1.6;
+  strong { color: #b88230; }
 }
 .vr-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .vr-tag {
