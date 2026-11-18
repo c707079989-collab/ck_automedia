@@ -59,7 +59,12 @@
           </div>
         </el-header>
         <el-main>
-          <router-view />
+          <!-- 只缓存创作工作台：方案生成 5-6 分钟，切菜单/刷新回来不能丢进度和表单 -->
+          <router-view v-slot="{ Component, route }">
+            <keep-alive :include="['CreatorWorkbench']">
+              <component :is="Component" :key="route.name" />
+            </keep-alive>
+          </router-view>
         </el-main>
       </el-container>
     </el-container>

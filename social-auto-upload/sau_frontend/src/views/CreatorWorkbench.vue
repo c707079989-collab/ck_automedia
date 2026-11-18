@@ -534,12 +534,20 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, onActivated } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { creatorApi } from '@/api/creator'
 
+// 显式命名，配合 App.vue 的 <keep-alive :include="['CreatorWorkbench']"> 精准保活
+defineOptions({ name: 'CreatorWorkbench' })
+
 const route = useRoute()
+const router = useRouter()
+
+// ---- 生成方案进行中标记：切页面靠 keep-alive 保活，刷新页面靠这个标记恢复 ----
+const GEN_MARK_KEY = 'creator_generating_plan'
+let genPoll = null
 
 const env = ref({})
 const presets = ref({ formats: [], topics: [], modes: [] })
@@ -812,18 +820,43 @@ function resetForm() {
   form.source_title = ''
 }
 
-// 真正发请求的那一步：新建或覆盖都由它完成，进度面板也在这里统一驱动
-async function _generate(payload) {
+// 进度面板的秒数/阶段推进：抽出来，正常生成和刷新恢复共用一套
+function startMakingClock(fromSec = 0) {
   making.value = true
-  makingSec.value = 0
-  makingStage.value = 0
-  // 阶段只是"大概在干到哪一步"的可视化，不精确对应后端；让等待过程看得见在动
+  makingSec.value = fromSec
+  makingStage.value = fromSec < 8 ? 0 : fromSec < 40 ? 1 : fromSec < 90 ? 2 : 3
   clearInterval(makingTimer)
   makingTimer = setInterval(() => {
     makingSec.value += 1
     const s = makingSec.value
     makingStage.value = s < 8 ? 0 : s < 40 ? 1 : s < 90 ? 2 : 3
   }, 1000)
+}
+function stopMakingClock() {
+  making.value = false
+  clearInterval(makingTimer)
+  makingTimer = null
+}
+
+// 写入/清除「正在生成」标记。存 localStorage：刷新页面后能发现上次没走完的生成
+function markGenerating(payload) {
+  try {
+    localStorage.setItem(GEN_MARK_KEY, JSON.stringify({
+      startedAt: Date.now(),
+      step: step.value,
+      payload
+    }))
+  } catch (e) {}
+}
+function clearGenerating() {
+  try { localStorage.removeItem(GEN_MARK_KEY) } catch (e) {}
+}
+
+// 真正发请求的那一步：新建或覆盖都由它完成，进度面板也在这里统一驱动
+async function _generate(payload) {
+  clearInterval(genPoll); genPoll = null   // 若之前有刷新恢复的轮询，先停掉，避免两套逻辑抢
+  markGenerating(payload)
+  startMakingClock(0)
   try {
     const r = await creatorApi.makePlan(payload)
     plan.value = r.data.plan
@@ -833,15 +866,67 @@ async function _generate(payload) {
     task.value = null
     step.value = 1
     dropDraft()   // 已经成方案了，临时方案没用了
+    clearGenerating()
     if (!r.data.ok) ElMessage.warning(r.data.error || '模型没给出完整方案，已生成兜底骨架（已存进我的方案）')
     else ElMessage.success(`方案已生成（${Math.round(r.data.ms / 1000)}s）`)
     loadPlans()
     return r.data.ok
   } catch (e) { return false } finally {
-    making.value = false
-    clearInterval(makingTimer)
-    makingTimer = null
+    stopMakingClock()
+    clearGenerating()
   }
+}
+
+// 刷新页面（组件重建、HTTP 连接已断）后恢复：读标记，把表单和进度还原，并轮询等待落盘的新方案
+async function resumeGeneratingIfAny() {
+  let mark = null
+  try { mark = JSON.parse(localStorage.getItem(GEN_MARK_KEY) || 'null') } catch (e) {}
+  if (!mark || !mark.payload) return false
+
+  const payload = mark.payload
+  // 还原当时的选题表单，让用户切回来看到的就是发起生成时的状态
+  form.mode = payload.mode || form.mode
+  form.format = payload.format || form.format
+  form.extra = payload.extra || ''
+  if (payload.item_id) form.item_id = payload.item_id
+  if (payload.brief) form.brief = payload.brief
+  if (typeof mark.step === 'number') step.value = mark.step
+
+  const elapsed = Math.max(0, Math.floor((Date.now() - (mark.startedAt || Date.now())) / 1000))
+  startMakingClock(elapsed)
+  ElMessage.info('检测到上次生成还没走完，正在后台继续等待结果…')
+
+  const expectId = payload.plan_id || ''
+  const expectItem = payload.item_id || ''
+  const startedAt = mark.startedAt || Date.now()
+  clearInterval(genPoll)
+  genPoll = setInterval(async () => {
+    try {
+      const r = await creatorApi.plans()
+      const hit = (r.data || []).find(p => {
+        if (expectId && p.id !== expectId) return false
+        const saved = p.saved_at ? Date.parse(p.saved_at) : 0
+        if (saved && saved < startedAt - 2000) return false   // 只看这次生成之后落盘的
+        if (expectItem && p.source?.item_id !== expectItem) return false
+        return true
+      })
+      if (hit) {
+        clearInterval(genPoll); genPoll = null
+        stopMakingClock()
+        clearGenerating()
+        await openPlan(hit.id)
+        step.value = 1
+        ElMessage.success('上次的方案已生成完成，已为你打开')
+      } else if (Date.now() - startedAt > 20 * 60 * 1000) {
+        // 超过 20 分钟还没落盘：后端可能随刷新中断了，放行让用户重试
+        clearInterval(genPoll); genPoll = null
+        stopMakingClock()
+        clearGenerating()
+        ElMessage.warning('上次生成没能完成（刷新可能中断了请求），请重新点「生成方案」')
+      }
+    } catch (e) {}
+  }, 4000)
+  return true
 }
 
 async function makePlan() {
@@ -1159,19 +1244,36 @@ async function loadSelAnalysis(itemId) {
 }
 watch(() => form.item_id, (v) => loadSelAnalysis(v))
 
-onMounted(async () => {
-  // 从爆款工作台「用它出方案」跳过来时，自动切到爆款复刻并选中那条
+// 从爆款页「用它出方案」跳来的意图。keep-alive 下组件不重建，必须靠 onActivated 接管；
+// 处理完把 query 清掉，避免切走再切回时反复覆盖用户当前选择。
+function applyRouteIntent() {
+  if (!route.query.item_id && !route.query.mode) return false
+  clearGenerating()
+  clearInterval(genPoll); genPoll = null
   if (route.query.item_id) {
     form.mode = 'viral'
     form.item_id = String(route.query.item_id)
-  } else if (route.query.mode) {
+  } else {
     form.mode = String(route.query.mode)
   }
+  loadSelAnalysis(form.item_id)
+  router.replace({ path: route.path })   // 吃掉 query，防止重复应用
+  return true
+}
+
+onMounted(async () => {
   loadStatus(true)
   loadPresets()
   loadAnalyzed()
   loadPlans()
   loadDrafts()
+
+  // 优先级：① 从爆款页「用它出方案」跳来的新意图 > ② 上次没走完的生成 > ③ 正在跑的出片任务
+  if (applyRouteIntent()) return
+
+  const resumed = await resumeGeneratingIfAny()
+  if (resumed) return   // 有生成在恢复，交给轮询接管，不再抢 step
+
   loadSelAnalysis(form.item_id)   // 草稿/路由还原时主动读一次已存拆解
   // 有正在跑的出片任务就直接接管，刷新页面不丢进度
   try {
@@ -1183,9 +1285,19 @@ onMounted(async () => {
     }
   } catch (e) {}
 })
+// keep-alive 缓存后，从别的菜单切回不会重新 mount；这里兜住路由跳转带来的新意图
+onActivated(() => {
+  if (applyRouteIntent()) return
+  // 生成被刷新打断但轮询仍在跑时，切回来重校一下计时，别停在旧秒数
+  if (genPoll && making.value) {
+    // 计时器一直在走，无需额外处理；仅确保进度面板状态为 true
+    making.value = true
+  }
+})
 onUnmounted(() => {
   clearTimeout(draftTimer)
   clearInterval(makingTimer)
+  clearInterval(genPoll); genPoll = null
   stopPolling()
 })
 </script>

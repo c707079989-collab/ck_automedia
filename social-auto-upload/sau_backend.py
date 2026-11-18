@@ -902,7 +902,8 @@ def hot_config():
             # 与已有配置合并，避免只提交 4 个字段时把 agent_* 配置冲掉
             cfg = dict(ana.load_llm_config_file())
             for k in ("base_url", "model", "api_key", "timeout",
-                      "agent_model", "agent_timeout", "agent_enabled"):
+                      "agent_model", "agent_timeout", "agent_enabled",
+                      "analyze_concurrency", "analyze_queue"):
                 if k in body:
                     cfg[k] = str(body.get(k, "")).strip()
             # 空 api_key 保留原值（前端脱敏显示时不回传）

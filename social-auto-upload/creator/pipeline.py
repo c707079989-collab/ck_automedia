@@ -286,7 +286,9 @@ def _concat(parts: List[Path], dest: Path) -> Dict[str, Any]:
     if not ff:
         return {"ok": False, "error": "未找到 ffmpeg，已保留分段文件"}
     dest.parent.mkdir(parents=True, exist_ok=True)
-    listfile = dest.parent / f".concat_{uuid.uuid4().hex[:8]}.txt"
+    # 固定清单名（不用 uuid）：自愈重试会反复调用这里，随机名会堆出几百个垃圾文件。
+    # 清单内容每次都是同一组分段的绝对路径，重复写覆盖即可。
+    listfile = dest.parent / ".concat_list.txt"
     with listfile.open("w", encoding="utf-8") as f:
         for p in parts:
             f.write(f"file '{p.as_posix()}'\n")
@@ -312,7 +314,12 @@ def _concat(parts: List[Path], dest: Path) -> Dict[str, Any]:
                 return {"ok": True, "error": ""}
             err = (r.stderr or "")[-400:]
     finally:
-        listfile.unlink(missing_ok=True)
+        # 删不掉清单（文件被占用/安全策略拦截）也不该让整个拼接判失败——
+        # 之前就是这里抛异常导致 _finalize 反复重试、成片明明好了状态却卡在 finalizing。
+        try:
+            listfile.unlink(missing_ok=True)
+        except OSError:
+            pass
     return {"ok": False, "error": err or "拼接失败"}
 
 
@@ -334,6 +341,18 @@ def _finalize(task_id: str, plan_id: str) -> None:
 
     title = _safe_name(plan.get("title") or "video", 20)
     final = out_dir / f"{title}_{Path(plan_id).name}.mp4"
+    # 幂等：成片已经拼好且有效就直接收尾，不再重复拼接。
+    # 之前成片其实好了，但 _concat 末尾删临时清单被安全策略拦截抛异常，
+    # 导致 _finalize 永远走不到标记 done，_reconcile 每 3s 重拼一次刷屏。
+    if final.exists() and final.stat().st_size > 0:
+        task.update({"status": "done", "done": len(shots), "final_path": str(final), "error": ""})
+        plan["final_video"] = str(final)
+        if not plan.get("rendered"):
+            plan["rendered"] = [{"idx": s["idx"], "status": s["status"], "path": s.get("path", "")} for s in shots]
+        _update(task, f"成片已存在，完成：{final.name}")
+        save_plan(plan)
+        save_task(task)
+        return
     _update(task, "全部镜次完成，开始拼接成片")
     c = _concat([Path(s["path"]) for s in ready], final)
     if c["ok"]:
@@ -375,6 +394,17 @@ def _reconcile(task: Dict[str, Any]) -> Dict[str, Any]:
     ready = [s for s in shots if s.get("status") == "done" and s.get("path") and Path(s["path"]).exists()]
     task["done"] = len(ready)
     if shots and len(ready) == len(shots):
+        # 成片其实已拼好就直接收尾，别再起线程重复拼接（防止状态卡在 finalizing 的死循环）
+        plan = load_plan(task.get("plan_id", "")) or {}
+        title = _safe_name(plan.get("title") or "video", 20)
+        final = C.VIDEO_DIR / Path(task.get("plan_id", "")).name / f"{title}_{Path(task.get('plan_id', '')).name}.mp4"
+        if final.exists() and final.stat().st_size > 0:
+            task.update({"status": "done", "final_path": str(final), "error": ""})
+            save_task(task)
+            if not plan.get("final_video"):
+                plan["final_video"] = str(final)
+                save_plan(plan)
+            return task
         task["status"] = "finalizing"
         save_task(task)
         th = threading.Thread(target=_finalize, args=(task["id"], task["plan_id"]), daemon=True)
